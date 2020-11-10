@@ -1,1 +1,1 @@
-# Reducción
+# Reducción de la dimensión
