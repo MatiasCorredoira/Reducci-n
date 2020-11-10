@@ -1,0 +1,283 @@
+---
+title: "Tipos de interés"
+author: "Matias Corredoira"
+date: "8/11/2020"
+output: html_document
+
+---
+
+# Esquema de la tarea requerida: 
+
+- Parte realizada anteriormmente
+- Análisis de correlaciones
+- Análisis de componentes principales
+- Varimax
+- Predicción del bono a 10 años
+- Conclusiones
+
+
+# Parte Realizada anteriormente
+
+
+
+#### Cargamos algunas de las librerías más básicas que nos resultarán necesarias
+
+```{r setup,  message= FALSE, warning= FALSE}
+
+library(factoextra)
+library(FactoMineR)
+library(readr)
+library(MASS)
+library(janitor)
+library(magrittr)
+```
+
+#### Carga de la base de datos y visión Gral
+
+
+```{r cars}
+TIUSD <- read_delim("~/CUNEF/Reduccion dimension/entrega_1/entrega_reduccion_bonos/ACPTIUSD.csv", 
+                       ";", escape_double = FALSE, trim_ws = TRUE)
+View(TIUSD)
+```
+
+
+Comprobamos tanto las primeras como las últimas observaciones
+
+
+```{r pressure, echo=FALSE}
+
+head(TIUSD)
+tail(TIUSD)
+```
+
+
+## ANÁLISIS EXPLORATORIO
+
+
+ Transformaciones pertinentes para esta parte dentro de la base de datos
+ 
+```{r}
+library(reshape2)
+
+TIUSD2 = TIUSD[complete.cases(TIUSD), ]
+TIUSD2$Fechas = as.Date(TIUSD2$X1, format = "%d/%m/%Y")
+
+TIUSD2=TIUSD2[,2:12]
+TIUSD2
+
+```
+
+
+
+La  Función melt de reshape2: "estira" el data frame
+
+```{r}
+#Elegimos entre distintos tipos de representación.
+
+data_long = melt(TIUSD2, id="Fechas") 
+ggplot(data=data_long, aes(x= Fechas, y=value,  color=variable)) +   
+  #geom_line()
+  geom_point(alpha = 0.3,  position = position_jitter()) +  #stat_smooth(method = "lm") +
+  labs(y = "Tipo", colour="Bono")
+```
+
+
+Modificamos de nuevo  para poder trabajar mejor los datos
+
+```{r}
+TIUSD.act=TIUSD[1:949, 1:9]
+head(TIUSD.act)
+str(TIUSD.act)
+Dates=as.Date(TIUSD.act$X1, format = "%d/%m/%y") # Vector para los días
+
+TIUSD.act=TIUSD.act[,-1]                         # Las fechas decidimos no incluirlas
+str(Dates)                                       # Estructura
+summary(TIUSD.act)                               # Estadísticos básicos
+
+```
+
+
+# Análisis de correlaciones
+
+Optamos por eliminar las filas que contienen valores NA
+```{r}
+cor.mat = round(cor(TIUSD.act),2) 
+
+cor.mat = round(cor(TIUSD.act, use="complete.obs"),2) 
+cor.mat
+
+```
+Como es lógico a medida que el bono aumenta en plazo su correlación se va reduciendo dado que estos de modo general se ven menos influidos por motivos presentes por su condición.
+
+
+
+
+
+#### Queremos conocer los nds, para ello utilizaremos la librería Hmisc
+
+```{r, message = FALSE, warning = FALSE}
+require(Hmisc)
+
+
+cor.mat.nds= rcorr(as.matrix(TIUSD.act))
+cor.mat.nds
+```
+####  Realizamos una representación de los clúster, donde podemos distinguir claramente que entre determinados periodos de tiempo se da una diferenciación clara.
+
+```{r, message = FALSE, warning = FALSE}
+require(corrplot)
+
+corrplot(cor.mat, type="full", order="hclust", addrect = 3,
+         tl.col="black", tl.cex=0.7, tl.srt=45)
+```
+
+Se puede comprobar como las variables se dividen de forma clara en 3 grypos dependiendo de sus periodos de tiempo.
+Por ello, consideramos que es lícita la realización de un análisis de componentes principales.
+
+
+
+#### Comprobamos tanto dispersiones, distribuciones por pares además de los coeficientes de las variables.
+
+```{r, message = FALSE, warning = FALSE}
+require(PerformanceAnalytics)
+
+chart.Correlation(TIUSD.act, histogram=TRUE, pch=19)
+```
+
+
+
+
+Para KMO nos resultará necesaria la inversa de la matriz de correlaciones
+
+```{r}
+ 
+
+invR = solve(cor.mat) 
+invR
+```
+Realizaremos ahora las correlaciones parciales. Para ello se exige la no existencia de los valores NA por lo que habrá que modificar.
+
+```{r, message = FALSE, warning = FALSE}
+require(ppcor)
+
+TIUSD.act.C=TIUSD.act[complete.cases(TIUSD.act),]
+p.cor.mat=pcor(TIUSD.act.C)                                                     # Realización de las parciales
+```
+
+
+### Realizamos KMO
+
+```{r, message = FALSE, warning = FALSE}
+library(psych)
+
+KMO(TIUSD.act)
+
+```
+Podemos ver que nos da un valor de 0.84 lo cual indica que las correlaciones entre las variables es bastante alta mientras que las correlaciones parcialeas son bajas, ya que en esta operación se divide entre las parciales. 
+Con esto, concluimos también que la realización de un análisis factorial sobre estas variables sería mas que razonable.
+
+
+```{r,message = FALSE, warning = FALSE}
+cortest.bartlett(TIUSD.act)
+```
+
+Queremos saber si la matriz de correlaciones es identidad por lo que realizamos este test. Viendo los resultados que nos ofrece la chi-cuadrado (Que en este caso es muy alto) nos permite concluir que se rechaza la hipotesis nula, es decir, hay relación entre las variables. Por ello extraemos también que la realización de ACP es lícita.
+
+
+
+
+
+
+
+# Análisis de componentes principales
+
+```{r}
+
+acp <- prcomp(TIUSD.act.C,
+              center = TRUE, scale = TRUE)            #Escalamos para evitar problemas con los pesos
+acp
+
+plot(acp, type= 'l')
+
+```
+
+
+Se ve de forma clara como las 2 primeras variables resultarían más que suficiente dado que las mismas en su conjunto son capaces de calcular la gran parte de la varianza, debajo mostramos las cifras.
+
+```{r}
+summary(acp)
+```
+
+
+Entre esas 2 variables ya se consigue explicar un 99.01 % de la varianza explicada por lo que se decide optar por reducir a solamente a esas 2 para tener así un modelo efectivo y a la vez lo más simplificado posible.
+
+
+
+
+# Varimax
+
+En primer lugar realizaremos la rotación entre variables
+
+Aquí buscamos la explicación que nos puede proporcionar cada una de las dimensiones de las variables
+
+```{r}
+act.R <- principal(TIUSD.act, rotate='varimax', nfactors=2,scores=TRUE)
+act.R
+
+```
+Se puede ver como los bonos que son de plazo más corto vienen explicados por la dimensión 2 mientras que los que son de plazo más largo lo hacen por la 1.
+Finalmente los de 6M y 12M se ve que se explican por las 2, sin embargo en los de 6 M vemos que la explicación de las 2 dimensiones está mucho más equilibrada.
+
+
+
+# Predicción del bono a 10 años
+
+Realizamos las modificaciones pertinentes en los datos
+
+```{r}
+TIUSD %<>% clean_names()
+```
+
+
+Dividimos la base de datos en 2 partes, training, a la que daremos un porcentaje de datos mucho mayor y test.
+
+```{r, message = FALSE, warning = FALSE}
+library(imputeTS)
+TIUSD_NA <- na_mean(TIUSD)
+
+
+training <- TIUSD_NA[1:949, 2:11]
+test <- TIUSD_NA[950:978, 2:11]
+```
+
+
+ La predicción la realizamos para un modelo de 2 dimensiones como hemos concluido anteriormente 
+
+```{r, message = FALSE, warning = FALSE}
+library(pls)
+modelo_pcr <- pcr(irs_10y ~ ., data = training, scale. = TRUE, ncomp = 2)
+
+```
+
+Ya habiendo modelizado el modelo realizamos la predicción con el mismo
+
+```{r}
+prediccion_pcr <- predict(modelo_pcr, newdata = test, ncomp = 2)
+test_pcr_mse <- mean((prediccion_pcr - test$irs_10y)^2)
+test_pcr_mse
+
+
+
+```
+Podemos comprobar que en este caso la predicción  nos ofrece bastante fiabilidad.
+
+
+## Conclusiones
+
+- Observando las correlaciones entre las distintas variables hemos podido ver que se pueden distinguir 3 grupos dentro de las mismas las cuales se separan en función del periodo de tiempo que trabajan.
+- KMO también nos da soluciones que nos hacen concluir que la relación entre las variables es  muy clara.
+- Lads variables que trabajan un periodo de tiempo más breves se ven mucho más afectadas por la 2º dimensión. A medida que aumenta el periodo de tiempo de los bonos, se van viendo cada vez más afectados por la 1º dimensión
+- El modelo de predicción realizado para un plazo de 10 años  nos da una fiabilidad considerable.
+
+
