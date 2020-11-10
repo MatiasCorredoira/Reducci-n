@@ -1,1 +1,1 @@
-# Reducci-n
+# Reducción
